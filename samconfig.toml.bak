@@ -1,0 +1,10 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "ai-vacation-agent"
+resolve_s3 = true
+s3_prefix = "ai-vacation-agent"
+region = "us-east-2"
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "BedrockModelId=\"amazon.nova-micro-v1:0\""
+image_repositories = []

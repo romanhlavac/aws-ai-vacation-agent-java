@@ -1,0 +1,51 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: AI Vacation Agent - Java Lambda + API Gateway + Bedrock
+
+Parameters:
+  BedrockModelId:
+    Type: String
+    Default: "amazon.nova-micro-v1:0"
+    Description: Bedrock modelId
+  ExecutionRoleArn:
+    Type: String
+    Description: Existing (preared) IAM role ARN for Lambda execution (logs + bedrock)
+
+Globals:
+  Function:
+    Runtime: java21
+    MemorySize: 1024
+    Timeout: 20
+    Tracing: Active
+
+Resources:
+  RestApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Cors:
+        AllowOrigin: "'*'"
+        AllowHeaders: "'*'"
+        AllowMethods: "'*'"
+
+  VacationAgentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: com.example.agent.AgentHandler::handleRequest
+      CodeUri: ./
+      Role: !Ref ExecutionRoleArn
+      Environment:
+        Variables:
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
+      Events:
+        Chat:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /chat
+            Method: POST
+
+Outputs:
+  ApiUrl:
+    Description: Base URL API Gateway
+    Value: !Sub "https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"

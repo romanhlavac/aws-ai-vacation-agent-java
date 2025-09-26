@@ -1,0 +1,10 @@
+# samconfig.toml
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "ai-vacation-agent-v2"
+region = "us-east-2"
+capabilities = "CAPABILITY_IAM"
+resolve_s3 = false
+s3_bucket = "ai-vacation-agent-artifacts-288761756328-us-east-2"
+parameter_overrides = "BedrockModelId=amazon.nova-micro-v1:0 ExecutionRoleArn=arn:aws:iam::288761756328:role/ai-vacation-agent-exec"

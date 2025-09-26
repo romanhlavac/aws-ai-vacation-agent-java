@@ -109,6 +109,8 @@ aws-ai-vacation-agent-java/
          ├─ HttpUtil.java
          └─ Models.java
 ```
+## Code Review
+- V **docs/OVERVIEW.md** najdeš analýzu a revizi codebase - byla vygenerována pomocí **ChatGPT** 5 nástroje **Codex**
 
 ---
 

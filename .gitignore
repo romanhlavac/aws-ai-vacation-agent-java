@@ -4,3 +4,4 @@
 target/
 .sam-cache/
 .sam-build/
+chatgpt_generation.txt

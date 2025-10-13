@@ -13,7 +13,7 @@
     <maven.compiler.source>21</maven.compiler.source>
     <maven.compiler.target>21</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <aws.sdk.version>2.25.60</aws.sdk.version>
+    <aws.sdk.version>2.35.4</aws.sdk.version> <!-- nebo novější -->
     <jackson.version>2.17.1</jackson.version>
     <lambda.core.version>1.2.3</lambda.core.version>
     <lambda.events.version>3.11.0</lambda.events.version>
@@ -32,14 +32,21 @@
       <version>${lambda.events.version}</version>
     </dependency>
 
-    <!-- AWS SDK v2: Bedrock Runtime -->
+      <!-- AWS SDK Core -->
+      <dependency>
+          <groupId>software.amazon.awssdk</groupId>
+          <artifactId>sdk-core</artifactId>
+          <version>${aws.sdk.version}</version>
+      </dependency>
+
+      <!-- AWS SDK v2: Bedrock Runtime -->
     <dependency>
       <groupId>software.amazon.awssdk</groupId>
       <artifactId>bedrockruntime</artifactId>
       <version>${aws.sdk.version}</version>
     </dependency>
 
-    <!-- HTTP client & JSON -->
+      <!-- HTTP client & JSON -->
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>

@@ -4,24 +4,27 @@ import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
-import software.amazon.awssdk.services.bedrockruntime.model.InvokeModelRequest;
-import software.amazon.awssdk.services.bedrockruntime.model.InvokeModelResponse;
+import software.amazon.awssdk.services.bedrockruntime.model.BedrockRuntimeException;
+import software.amazon.awssdk.services.bedrockruntime.model.ConverseRequest;
+import software.amazon.awssdk.services.bedrockruntime.model.ConverseResponse;
+import software.amazon.awssdk.services.bedrockruntime.model.ContentBlock;
+import software.amazon.awssdk.services.bedrockruntime.model.ConversationRole;
+import software.amazon.awssdk.services.bedrockruntime.model.InferenceConfiguration;
+import software.amazon.awssdk.services.bedrockruntime.model.Message;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.stream.Collectors;
 
 public class AgentHandler implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final String OPEN_METEO_GEOCODING = "https://geocoding-api.open-meteo.com/v1/search?count=1&language=cs&name=";
-    private static final String OPEN_METEO_FORECAST = "https://api.open-meteo.com/v1/forecast?daily=temperature_2m_max,temperature_2m_min,precipitation_sum&forecast_days=7&timezone=auto&latitude=%s&longitude=%s";
+    private static final String OPEN_METEO_GEOCODING =
+            "https://geocoding-api.open-meteo.com/v1/search?count=1&language=cs&name=";
+    private static final String OPEN_METEO_FORECAST =
+            "https://api.open-meteo.com/v1/forecast?daily=temperature_2m_max,temperature_2m_min,precipitation_sum&forecast_days=7&timezone=auto&latitude=%s&longitude=%s";
 
     @Override
     public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent input, Context context) {
@@ -32,7 +35,7 @@ public class AgentHandler implements RequestHandler<APIGatewayProxyRequestEvent,
             // 1) Zjisti destinaci (priorita: explicitní pole -> LLM -> fallback)
             String destination = normalize(req.destination);
             if (isBlank(destination)) {
-                destination = extractDestinationWithBedrock(req.message);
+                destination = extractDestinationWithBedrock(req.message, context);
             }
             if (isBlank(destination)) {
                 return ok(Models.ChatResponse.askForDestination(sessionId));
@@ -74,79 +77,85 @@ public class AgentHandler implements RequestHandler<APIGatewayProxyRequestEvent,
         return MAPPER.readValue(body, Models.ChatRequest.class);
     }
 
-    private String normalize(String s) {
-        return (s == null) ? null : s.trim();
-    }
+    private String normalize(String s) { return (s == null) ? null : s.trim(); }
 
-    private boolean isBlank(String s) {
-        return s == null || s.isBlank();
-    }
+    private boolean isBlank(String s) { return s == null || s.isBlank(); }
 
-    // === 1) Extrakce destinace pomocí LLM (Bedrock Anthropic messages) ===
-    private String extractDestinationWithBedrock(String userMessage) {
+    // === 1) Extrakce destinace přes Bedrock Converse (funguje i s Nova Micro) ===
+    private String extractDestinationWithBedrock(String userMessage, Context ctx) {
         try {
             if (isBlank(userMessage)) return null;
-            String modelId = System.getenv("BEDROCK_MODEL_ID");
-            if (modelId == null || modelId.isBlank()) {
-                // Fallback bez LLM: vezmi první slovo s velkým písmenem a bez diakritiky to zkus (velmi jednoduché).
+
+            String id = System.getenv("BEDROCK_MODEL_ID"); // např. "amazon.nova-micro-v1:0" (model) nebo "us.amazon.nova-micro-v1:0" (inference profile)
+            if (isBlank(id)) {
                 return simpleHeuristic(userMessage);
             }
 
-            String systemPrompt = "You extract exactly ONE travel destination (city or place name) from the user's message. "
-                    + "Return only the destination name (no extra words, no quotes). If no destination is present, return NONE. "
-                    + "Accept Czech language too.";
+            String systemPrompt =
+                    "Extract exactly ONE travel destination (city or place name) from the user's message. " +
+                            "Return only the destination name (no extra words, no quotes). " +
+                            "If no destination is present, return NONE. Accept Czech language too.";
 
-            // Anthropic messages schema (Bedrock)
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("anthropic_version", "bedrock-2023-05-31");
-            payload.put("system", systemPrompt);
-
-            Map<String, Object> userMsg = new LinkedHashMap<>();
-            userMsg.put("role", "user");
-            List<Map<String, String>> content = new ArrayList<>();
-            content.add(Map.of("type", "text", "text", userMessage));
-            userMsg.put("content", content);
-
-            payload.put("messages", List.of(userMsg));
-            payload.put("max_tokens", 128);
-
-            String json = MAPPER.writeValueAsString(payload);
+            String prompt = systemPrompt + "\n\nUser message:\n" + userMessage;
 
             BedrockRuntimeClient bedrock = BedrockClientFactory.create();
-            InvokeModelResponse resp = bedrock.invokeModel(InvokeModelRequest.builder()
-                    .modelId(modelId)
-                    .contentType("application/json")
-                    .accept("application/json")
-                    .body(SdkBytes.fromUtf8String(json))
-                    .build());
 
-            String responseJson = resp.body().asUtf8String();
-            JsonNode root = MAPPER.readTree(responseJson);
-            // Expected: { content: [ { text: "Prague" } ], ... }
+            ConverseRequest request = ConverseRequest.builder()
+                    // modelId podporuje jak foundation model ID (např. amazon.nova-micro-v1:0),
+                    // tak inference profile ID (např. us.amazon.nova-micro-v1:0)
+                    .modelId(id)
+                    .messages(Message.builder()
+                            .role(ConversationRole.USER)
+                            .content(ContentBlock.builder().text(prompt).build())
+                            .build())
+                    .inferenceConfig(InferenceConfiguration.builder()
+                            .maxTokens(128)
+                            .temperature(0f) // float!
+                            .build())
+                    .build();
+
+            ConverseResponse resp = bedrock.converse(request);
+
+            // Výstup je unifikovaný: první textový blok z odpovědi
             String extracted = null;
-            if (root.has("content") && root.get("content").isArray() && root.get("content").size() > 0) {
-                JsonNode first = root.get("content").get(0);
-                if (first.has("text")) {
-                    extracted = first.get("text").asText();
-                }
+            if (resp.output() != null
+                    && resp.output().message() != null
+                    && resp.output().message().content() != null
+                    && !resp.output().message().content().isEmpty()
+                    && resp.output().message().content().get(0).text() != null) {
+                extracted = resp.output().message().content().get(0).text();
             }
+
             if (extracted != null) {
                 extracted = extracted.trim();
                 if ("NONE".equalsIgnoreCase(extracted)) return null;
-                // Ořízni případné tečky/uvozovky
+                // Ořízni případné uvozovky/mezery
                 extracted = extracted.replaceAll("^[\"'“”„\\s]+|[\"'“”„\\s]+$", "");
                 return extracted;
             }
             return null;
+
+        } catch (BedrockRuntimeException e) {
+            String msg = "Bedrock error: " + (e.awsErrorDetails() != null ? e.awsErrorDetails().errorMessage() : e.getMessage());
+            if (ctx != null && ctx.getLogger() != null) {
+                ctx.getLogger().log(msg + "\n");
+            } else {
+                System.err.println(msg);
+            }
+            // Přátelský fallback – zkus hrubou heuristiku
+            return simpleHeuristic(userMessage);
+
         } catch (Exception e) {
-            // fallback
+            if (ctx != null && ctx.getLogger() != null) {
+                ctx.getLogger().log("Bedrock call failed: " + e.getMessage() + "\n");
+            }
             return simpleHeuristic(userMessage);
         }
     }
 
     private String simpleHeuristic(String text) {
         // velmi jednoduché: najdi "do {Slovo}" / "to {Word}" / první kapitalizované slovo
-        String t = text.trim();
+        String t = text == null ? "" : text.trim();
         String[] tokens = t.split("\\s+");
         for (int i = 0; i < tokens.length - 1; i++) {
             if (tokens[i].equalsIgnoreCase("do") || tokens[i].equalsIgnoreCase("to")) {
@@ -155,7 +164,7 @@ public class AgentHandler implements RequestHandler<APIGatewayProxyRequestEvent,
             }
         }
         for (String tok : tokens) {
-            if (Character.isUpperCase(tok.codePointAt(0))) {
+            if (!tok.isEmpty() && Character.isUpperCase(tok.codePointAt(0))) {
                 String cand = tok.replaceAll("[,.;:!?]", "");
                 if (cand.length() > 1) return cand;
             }
@@ -209,7 +218,7 @@ public class AgentHandler implements RequestHandler<APIGatewayProxyRequestEvent,
                 .withStatusCode(200)
                 .withHeaders(Map.of("Content-Type", "application/json; charset=utf-8"))
                 .withBody(MAPPER.writeValueAsString(body));
-        }
+    }
 
     private APIGatewayProxyResponseEvent error(int code, String message) {
         return new APIGatewayProxyResponseEvent()

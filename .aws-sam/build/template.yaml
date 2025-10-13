@@ -4,11 +4,11 @@ Description: AI Vacation Agent - Java Lambda + API Gateway + Bedrock
 Parameters:
   BedrockModelId:
     Type: String
-    Default: amazon.nova-micro-v1:0
+    Default: us.amazon.nova-micro-v1:0
     Description: Bedrock modelId
   ExecutionRoleArn:
     Type: String
-    Description: Existing IAM role ARN for Lambda execution (logs + bedrock)
+    Description: Existing (preared) IAM role ARN for Lambda execution (logs + bedrock)
 Globals:
   Function:
     Runtime: java21

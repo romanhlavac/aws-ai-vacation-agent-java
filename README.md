@@ -1,6 +1,6 @@
 # AWS AI Vacation Agent (Java + Lambda + API Gateway + Bedrock)
 
-Jednoduchý AI agent nad AWS, který se nejprve zeptá, *kam chcete jet na dovolenou*, a následně
+Jednoduchý AI agent nad AWS, který se nejprve zeptá, *kam chceš jet na dovolenou*, a následně
 doplní **předpověď počasí** pro vybranou destinaci (7 dní, Open‑Meteo).
 
 - **BE**: Java 21 (AWS Lambda), Amazon API Gateway, Amazon Bedrock (LLM – přes `InvokeModel`), Open‑Meteo (bez API klíče).
@@ -14,15 +14,15 @@ doplní **předpověď počasí** pro vybranou destinaci (7 dní, Open‑Meteo).
 ### 0) Předpoklady
 - AWS účet, `aws configure` hotové (role s oprávněními pro Lambda, API Gateway, CloudFormation, Logs, a **bedrock:InvokeModel**).
 - Povolené použití vybraného modelu v **Amazon Bedrock** (v konzoli Bedrocku -> *Model access* povolit Anthropic/Meta apod.).
-- Nainstalováno: **Java 21**, **Maven 3.9+**, **AWS SAM CLI**.
+- Nainstalováno lokálně (dostupné z prostředí shellu): **Java 21**, **Maven 3.9+**, **AWS SAM CLI**.
 - Region: doporučeně `us-east-1` (Bedrock má největší pokrytí).
 
 ### 1) Stažení projektu
-Stáhněte ZIP z odkazu níže a rozbalte jej. Otevřete v IntelliJ IDEA jako **Maven** projekt.
+Stáhni zdroje/repozitory z GitHub. Otevři v IntelliJ IDEA jako **Maven** projekt.
 
 ### 2) Vyberte Bedrock model
 V souboru **`template.yaml`** je parametr `BedrockModelId` (výchozí je prázdný). V konzoli Bedrocku si
-zjistěte přesné ID modelu, např. pro Anthropic Claude Sonnet může vypadat podobně jako:
+zjisti přesné ID modelu, např. pro Anthropic Claude Sonnet může vypadat podobně jako:
 
 ```
 anthropic.claude-3-5-sonnet-20240620-v1:0 nebo amazon.nova-micro-v1:0 (nejlevnější použití pro agenty)
@@ -46,9 +46,9 @@ A. Při `--guided` vyplňte:
 - Ostatní volby můžete ponechat na výchozích hodnotách (SAM si zapamatuje pro příště `samconfig.toml`).
 
 B. Bez `--guided`:
-- Viz Deploy.sh
+- Parametry definovány v **`Deploy.sh`**
 
-Po dokončení uvidíte **API endpoint** (HTTP URL).
+Po dokončení uvidíte ve výpisu console **API endpoint** (HTTP URL).
 
 ### 4) Test (curl)
 
